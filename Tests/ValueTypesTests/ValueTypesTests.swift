@@ -6,30 +6,24 @@ final class ValueTypesTests: XCTestCase {
         var project = makeProject()
         
         // Shift all objects inside of a group on some page
-        for i in 0..<project.pages.count {
-            var page = project.pages[i]
+        for i in project.pages.indices {
             
-            for j in 0..<page.pageObjects.count {
-                let pageObject = page.pageObjects[j]
-            
-                if var group = pageObject as? Group {
-                    for k in 0..<group.pageObjects.count {
-                        var pageObject = group.pageObjects[k]
-                        
-                        let shiftedFrame = pageObject.frame.applying(CGAffineTransform(translationX: 10, y: 10))
-                        pageObject.frame = shiftedFrame
-                        
-                        // Write back changed page object
-                        group.pageObjects[k] = pageObject
-                    }
-                
-                    // Write back changed group
-                    page.pageObjects[j] = group
+            for index in project.pages[i].pageObjects.indices {
+                project.pages[i][at: index, asType: Group.self]?.forEachPageObject { pageObject in 
+                    let shiftedFrame = pageObject.frame.applying(CGAffineTransform(translationX: 10, y: 10))
+                    pageObject.frame = shiftedFrame
                 }
             }
             
-            // Write back changed page
-            project.pages[i] = page
+//            project.pages[i].forEachPageObject { pageObject in
+//                if var group = pageObject as? Group {
+//                    group.forEachPageObject { pageObject in
+//                        let shiftedFrame = pageObject.frame.applying(CGAffineTransform(translationX: 10, y: 10))
+//                        pageObject.frame = shiftedFrame
+//                    }
+//                    pageObject = group
+//                }
+//            }
         }
     }
     
@@ -42,5 +36,45 @@ final class ValueTypesTests: XCTestCase {
         project.pages[0].pageObjects = [TextObject(), ImageObject(), group]
         
         return project
+    }
+}
+
+extension PageObjectContainer {
+    subscript<T: PageObject> (at index: Int, asType type: T.Type) -> T? {
+        get {
+            pageObjects[index] as? T
+        }
+        set {
+            if let value = newValue {
+                pageObjects[index] = value
+            }
+        }
+    }
+}
+
+extension Group {
+    mutating func forEachPageObject(handler: (inout PageObject) -> ()) {
+        for j in pageObjects.indices {
+            handler(&pageObjects[j])
+        }
+    }
+}
+
+extension Page {
+    mutating func forEachPageObject(handler: (inout PageObject) -> ()) {
+        for j in pageObjects.indices {
+            handler(&pageObjects[j])
+        }
+    }
+    
+    mutating func mutateObjects<T : PageObject>(ofType type: T.Type, handler: (inout T) -> ()) {
+        for j in pageObjects.indices {
+            let pageObject = pageObjects[j]
+        
+            if var object = pageObject as? T {
+                handler(&object)
+                pageObjects[j] = object
+            }
+        }
     }
 }
