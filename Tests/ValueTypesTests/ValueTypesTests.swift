@@ -33,7 +33,8 @@ final class ValueTypesTests: XCTestCase {
             text: ""
         )
         let page = Page(
-            frame: CGRect(origin: .zero, size: CGSize(width: 2000, height: 2000)),
+            id: UUID(),
+            size: CGSize(width: 2000, height: 2000),
             pageObjects: [text]
         )
 
@@ -48,7 +49,8 @@ final class ValueTypesTests: XCTestCase {
             text: ""
         )
         let page = Page(
-            frame: CGRect(origin: .zero, size: CGSize(width: 2000, height: 2000)),
+            id: UUID(),
+            size: CGSize(width: 2000, height: 2000),
             pageObjects: [text]
         )
 
@@ -66,7 +68,8 @@ final class ValueTypesTests: XCTestCase {
             pageObjects: [text]
         )
         let page = Page(
-            frame: CGRect(origin: .zero, size: CGSize(width: 2000, height: 2000)),
+            id: UUID(),
+            size: CGSize(width: 2000, height: 2000),
             pageObjects: [group]
         )
 
@@ -76,12 +79,37 @@ final class ValueTypesTests: XCTestCase {
         XCTAssertEqual(typedChild, text)
     }
 
+    func testPageObjectAtWithMutation() throws {
+        let text = TextObject(
+            pageObjectData: .init(frame: CGRect(x: 200, y: 200, width: 100, height: 100)),
+            text: ""
+        )
+        let group = Group(
+            frame: CGRect(x: 100, y: 100, width: 800, height: 400),
+            pageObjects: [text]
+        )
+        var page = Page(
+            id: UUID(),
+            size: CGSize(width: 2000, height: 2000),
+            pageObjects: [group]
+        )
+
+        let keyPath = try XCTUnwrap(page.pageObject(at: CGPoint(x: 250, y: 250)))
+        page.mutate(keyPath: keyPath, asType: TextObject.self) { textObject in
+            textObject.text = "Hello"
+        }
+        try XCTAssertEqual(XCTUnwrap(page[keyPath: keyPath] as? TextObject).text, "Hello")
+    }
+
 
     func makeProject() -> Project {
         let sheetSize = CGSize(width: 2000, height: 500)
         
         var project = Project()
-        project.pages = [Page(frame: CGRect(origin: .zero, size: sheetSize)), Page(frame: CGRect(origin: .zero, size: sheetSize))]
+        project.pages = [
+            Page(id: UUID(), size: sheetSize),
+            Page(id: UUID(), size: sheetSize),
+        ]
         let group = Group(
             frame: CGRect(x: 100, y: 100, width: 800, height: 400),
             pageObjects: [
@@ -95,16 +123,36 @@ final class ValueTypesTests: XCTestCase {
     }
 }
 
-extension PageObjectContainer {
-    subscript<T: PageObject> (at index: Int, asType type: T.Type) -> T? {
+extension Node {
+    subscript<T: Node> (at index: Int, asType type: T.Type) -> T? {
         get {
-            pageObjects[index] as? T
+            children[index] as? T
         }
         set {
             if let value = newValue {
-                pageObjects[index] = value
+                children[index] = value
             }
         }
+    }
+
+    subscript<T: Node> (keyPath keyPath: WritableKeyPath<Node, Node>, asType type: T.Type) -> T? {
+        get { self[keyPath: keyPath] as? T }
+        set {
+            guard let newValue = newValue else {
+                fatalError("Must not be nil")
+            }
+            var selfCopy = self as Node
+            selfCopy[keyPath: keyPath] = newValue
+            self = selfCopy as! Self
+        }
+    }
+
+    mutating func mutate<T: Node> (keyPath: WritableKeyPath<Node, Node>, asType type: T.Type, body: (inout T) -> Void) {
+        guard var copy = self[keyPath: keyPath] as? T else {
+            return
+        }
+        body(&copy)
+        self[keyPath: keyPath, asType: T.self] = copy
     }
 }
 
