@@ -26,29 +26,133 @@ final class ValueTypesTests: XCTestCase {
 //            }
         }
     }
-    
+
+    func testPageObjectAtFound() throws {
+        let text = TextObject(
+            pageObjectData: .init(frame: CGRect(x: 200, y: 200, width: 100, height: 100)),
+            text: ""
+        )
+        let page = Page(
+            id: UUID(),
+            size: CGSize(width: 2000, height: 2000),
+            pageObjects: [text]
+        )
+
+        let keyPath = try XCTUnwrap(page.pageObject(at: CGPoint(x: 250, y: 250)))
+        let child = page[keyPath: keyPath]
+        XCTAssertEqual(child as? TextObject, text)
+    }
+
+    func testPageObjectAtNotFound() throws {
+        let text = TextObject(
+            pageObjectData: .init(frame: CGRect(x: 200, y: 200, width: 100, height: 100)),
+            text: ""
+        )
+        let page = Page(
+            id: UUID(),
+            size: CGSize(width: 2000, height: 2000),
+            pageObjects: [text]
+        )
+
+        let keyPath = page.pageObject(at: CGPoint(x: 500, y: 500))
+        XCTAssertNil(keyPath)
+    }
+
+    func testPageObjectAtInContainer() throws {
+        let text = TextObject(
+            pageObjectData: .init(frame: CGRect(x: 200, y: 200, width: 100, height: 100)),
+            text: ""
+        )
+        let group = Group(
+            frame: CGRect(x: 100, y: 100, width: 800, height: 400),
+            pageObjects: [text]
+        )
+        let page = Page(
+            id: UUID(),
+            size: CGSize(width: 2000, height: 2000),
+            pageObjects: [group]
+        )
+
+        let keyPath = try XCTUnwrap(page.pageObject(at: CGPoint(x: 250, y: 250)))
+        let child = page[keyPath: keyPath]
+        let typedChild = try XCTUnwrap(child as? TextObject)
+        XCTAssertEqual(typedChild, text)
+    }
+
+    func testPageObjectAtWithMutation() throws {
+        let text = TextObject(
+            pageObjectData: .init(frame: CGRect(x: 200, y: 200, width: 100, height: 100)),
+            text: ""
+        )
+        let group = Group(
+            frame: CGRect(x: 100, y: 100, width: 800, height: 400),
+            pageObjects: [text]
+        )
+        var page = Page(
+            id: UUID(),
+            size: CGSize(width: 2000, height: 2000),
+            pageObjects: [group]
+        )
+
+        let keyPath = try XCTUnwrap(page.pageObject(at: CGPoint(x: 250, y: 250)))
+        page.mutate(keyPath: keyPath, asType: TextObject.self) { textObject in
+            textObject.text = "Hello"
+        }
+        try XCTAssertEqual(XCTUnwrap(page[keyPath: keyPath] as? TextObject).text, "Hello")
+    }
+
+
     func makeProject() -> Project {
         let sheetSize = CGSize(width: 2000, height: 500)
         
         var project = Project()
-        project.pages = [Page(frame: CGRect(origin: .zero, size: sheetSize)), Page(frame: CGRect(origin: .zero, size: sheetSize))]
-        let group = Group(frame: CGRect(x: 100, y: 100, width: 800, height: 400), pageObjects: [TextObject(), ImageObject()])
+        project.pages = [
+            Page(id: UUID(), size: sheetSize),
+            Page(id: UUID(), size: sheetSize),
+        ]
+        let group = Group(
+            frame: CGRect(x: 100, y: 100, width: 800, height: 400),
+            pageObjects: [
+                TextObject(pageObjectData: .init(frame: CGRect(x: 200, y: 200, width: 100, height: 100)), text: ""),
+                ImageObject(pageObjectData: .init(frame: CGRect(x: 400, y: 200, width: 100, height: 100)), imagePath: nil)
+            ]
+        )
         project.pages[0].pageObjects = [TextObject(), ImageObject(), group]
         
         return project
     }
 }
 
-extension PageObjectContainer {
-    subscript<T: PageObject> (at index: Int, asType type: T.Type) -> T? {
+extension Node {
+    subscript<T: Node> (at index: Int, asType type: T.Type) -> T? {
         get {
-            pageObjects[index] as? T
+            children[index] as? T
         }
         set {
             if let value = newValue {
-                pageObjects[index] = value
+                children[index] = value
             }
         }
+    }
+
+    subscript<T: Node> (keyPath keyPath: WritableKeyPath<Node, Node>, asType type: T.Type) -> T? {
+        get { self[keyPath: keyPath] as? T }
+        set {
+            guard let newValue = newValue else {
+                fatalError("Must not be nil")
+            }
+            var selfCopy = self as Node
+            selfCopy[keyPath: keyPath] = newValue
+            self = selfCopy as! Self
+        }
+    }
+
+    mutating func mutate<T: Node> (keyPath: WritableKeyPath<Node, Node>, asType type: T.Type, body: (inout T) -> Void) {
+        guard var copy = self[keyPath: keyPath] as? T else {
+            return
+        }
+        body(&copy)
+        self[keyPath: keyPath, asType: T.self] = copy
     }
 }
 

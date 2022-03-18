@@ -7,47 +7,20 @@ public struct Project {
     var pages: [Page] = []
 }
 
-public protocol PageObjectContainer {
-    var pageObjects: [/*any*/ PageObject] { get set }
-}
-
 public typealias ID = UUID
-public extension PageObjectContainer {
-    subscript (id: ID) -> PageObject {
-        get {
-            pageObjects.first(where: {$0.id == id})!
-        }
-        set {
-            pageObjects[pageObjects.firstIndex(where: {$0.id == id})!] = newValue
-        }
-    }
-    
-    func pageObject(at point: CGPoint) -> KeyPath<PageObjectContainer, PageObject>? {
-        for pageObject in pageObjects.reversed() {
-            if pageObject.frame.contains(point) {
-                if let container = pageObject as? PageObjectContainer {
-                    let keyPath = container.pageObject(at: point)
-                }
-                return \PageObjectContainer.[pageObject.id]
-            }
-        }
-        
-        return nil
-    }
+
+public protocol Node {
+    var id: ID { get }
+    var children: [/*any*/ Node] { get set }
 }
 
-public struct Page : PageObjectContainer {
-    public var frame: CGRect = .zero
-    public var pageObjects: [/*any*/ PageObject] = []
-}
-
-public protocol PageObject  {
+public protocol PageObject: Node {
     var pageObjectData: PageObjectData { get set }
     var frame: CGRect { get set }
 }
 
 public extension PageObject {
-    var id: UUID {
+    var id: ID {
         pageObjectData.id
     }
     
@@ -55,29 +28,74 @@ public extension PageObject {
         get { pageObjectData.frame }
         set { pageObjectData.frame = newValue }
     }
+
+    var children: [Node] {
+        get { return [] }
+        set { fatalError("Doesn't have children") }
+    }
 }
 
-public struct PageObjectData {
-    public var id: UUID = UUID()
+public struct PageObjectData: Equatable {
+    public var id: ID = UUID()
     public var frame: CGRect
 }
 
-public struct TextObject: PageObject {
+public struct Page : Node {
+    public var id: ID
+    public var size: CGSize = .zero
+    public var pageObjects: [/*any*/ PageObject] = []
+
+    public var children: [/*any*/ Node] {
+        get { pageObjects }
+        set { pageObjects = newValue as! [PageObject] }
+    }
+}
+
+public struct TextObject: PageObject, Equatable {
     public var pageObjectData: PageObjectData = PageObjectData(frame: .zero)
     public var text: String = ""
 }
 
-public struct ImageObject: PageObject {
+public struct ImageObject: PageObject, Equatable {
     public var pageObjectData: PageObjectData = PageObjectData(frame: .zero)
     public var imagePath: URL?
 }
 
-public struct Group: PageObject, PageObjectContainer {
+public struct Group: PageObject {
     init(frame: CGRect, pageObjects: [PageObject]) {
         self.pageObjectData = PageObjectData(frame: frame)
-        self.pageObjects = pageObjects
+        self.children = pageObjects
     }
-    public var pageObjectData: PageObjectData = PageObjectData(frame: .zero)
     public var pageObjects: [/*any*/ PageObject] = []
+    public var pageObjectData: PageObjectData = PageObjectData(frame: .zero)
+
+    public var children: [/*any*/ Node] {
+        get { pageObjects }
+        set { pageObjects = newValue as! [/*any*/ PageObject] }
+    }
 }
 
+public extension Node {
+    subscript (id: ID) -> Node {
+        get {
+            return children.first(where: {$0.id == id})!
+        }
+        set {
+            children[children.firstIndex(where: {$0.id == id})!] = newValue
+        }
+    }
+
+    func pageObject(at point: CGPoint) -> WritableKeyPath<Node, Node>? {
+        for child in children.reversed() where (child as? PageObject)?.frame.contains(point) ?? false {
+            if let subChild = child.pageObject(at: point) {
+                let base = \Node.[child.id]
+                return base.appending(path: subChild)
+            } else {
+                // There's a non-container PageObject at the coordinate → we found what we're looking for.
+                return \Node.[child.id]
+            }
+        }
+
+        return nil
+    }
+}
