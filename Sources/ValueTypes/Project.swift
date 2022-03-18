@@ -22,6 +22,15 @@ public extension PageObjectContainer {
         }
     }
 
+    subscript (container id: ID) -> PageObjectContainer {
+        get {
+            pageObjects.first(where: {$0.id == id})! as! PageObjectContainer
+        }
+        set {
+            pageObjects[pageObjects.firstIndex(where: {$0.id == id})!] = newValue as! PageObject
+        }
+    }
+
     /// Returns a strongly typed page object (no existential)
     /// if the caller knows the type statically.
     ///
@@ -38,25 +47,37 @@ public extension PageObjectContainer {
         }
     }
 
-    func pageObject(at point: CGPoint) -> KeyPath<Self, PageObject>? {
+    func pageObject(at point: CGPoint) -> WritableKeyPath<PageObjectContainer, PageObject>? {
         /// Helper function for constructing a key path that traverses through a PageObjectContainer.
-        func pageObjectAtPointInContainer<C: PageObject & PageObjectContainer>(_ container: C) -> KeyPath<Self, PageObject> {
-            guard let childKeyPath = container.pageObject(at: point) else {
-                // Container has no child at this coordinate → return key path to container
-                return \Self.[container.id]
-            }
-            let baseKeyPath: WritableKeyPath<Self, C> = \Self.[typed: container.id]
-            return baseKeyPath.appending(path: childKeyPath)
-        }
+//        func pageObjectAtPointInContainer<C: PageObject & PageObjectContainer>(_ container: C) -> KeyPath<Self, PageObject> {
+//            guard let childKeyPath = container.pageObject(at: point) else {
+//                // Container has no child at this coordinate → return key path to container
+//                return \Self.[container.id]
+//            }
+//            let baseKeyPath: WritableKeyPath<Self, C> = \Self.[typed: container.id]
+//            return baseKeyPath.appending(path: childKeyPath)
+//        }
 
         for pageObject in pageObjects.reversed() where pageObject.frame.contains(point) {
             if let container = pageObject as? (PageObject & PageObjectContainer) {
-                // There's a container at the coordinate → traverse into container.
-                return _openExistential(container, do: pageObjectAtPointInContainer)
+                let base = \PageObjectContainer.[container: pageObject.id]
+                if let child = container.pageObject(at: point) {
+                    return base.appending(path: child)
+                } else {
+                    return \PageObjectContainer.[pageObject.id]
+                }
             } else {
                 // There's a non-container PageObject at the coordinate → we found what we're looking for.
-                return \Self.[pageObject.id]
+                return \PageObjectContainer.[pageObject.id]
             }
+
+//            if let container = pageObject as? (PageObject & PageObjectContainer) {
+//                // There's a container at the coordinate → traverse into container.
+//                return _openExistential(container, do: pageObjectAtPointInContainer)
+//            } else {
+//                // There's a non-container PageObject at the coordinate → we found what we're looking for.
+//                return \PageObjectContainer.[pageObject.id]
+//            }
         }
         
         return nil
